@@ -95,6 +95,21 @@ def upload_to_github(github_path, local_filepath):
 
 # ================= MAIN PIPELINE =================
 
+# 1. Load existing metadata to avoid duplicates
+METADATA_FILE = "foto_metadata.xlsx"
+if os.path.exists(METADATA_FILE):
+    existing_meta_df = pd.read_excel(METADATA_FILE)
+    # Create a unique ID for each record to check against
+    processed_ids = set(
+        existing_meta_df['kode_proyek'].astype(str) + "_" + 
+        existing_meta_df['minggu'].astype(str) + "_" + 
+        existing_meta_df['nama_file'].astype(str)
+    )
+    print(f"ℹ️ Found {len(processed_ids)} existing records. I will skip these.")
+else:
+    existing_meta_df = pd.DataFrame()
+    processed_ids = set()
+
 df = pd.read_excel(EXCEL_FILE)
 
 foto_cols = [
@@ -108,10 +123,10 @@ foto_cols = [
     ("Foto Delapan", "Kegiatan pada foto delapan"),
 ]
 
-records = []
+new_records = []
 
 for _, row in df.iterrows():
-    kode_proyek = str(row["Kode proyek ..."]).replace(" ", "_")
+    kode_proyek = str(row["Kode proyek ..."])
     minggu = str(row["Minggu yang dilaporkan ..."]).replace(" ", "_")
 
     for foto_col, desc_col in foto_cols:
@@ -123,10 +138,12 @@ for _, row in df.iterrows():
 
         filename = os.path.basename(unquote(url))
         clean_filename = filename.replace(" ", "_")
-
-        # Identify folder name in OneDrive
-        # folder_name = foto_col.replace("Foto ", "Foto ").strip()
-        # local_folder = os.path.join(FORMS_LOCAL_PATH, folder_name)
+        
+        # --- CHECK FOR DUPLICATES ---
+        record_id = f"{kode_proyek}_{minggu}_{clean_filename}"
+        if record_id in processed_ids:
+            # Skip if we already have this specific photo for this project/week
+            continue
 
         folder_name = FOTO_FOLDER_MAP.get(foto_col)
         if not folder_name:
@@ -135,17 +152,17 @@ for _, row in df.iterrows():
 
         local_folder = os.path.join(FORMS_LOCAL_PATH, folder_name)
 
-
         # Find file locally
         local_file = os.path.join(local_folder, filename)
         if not os.path.exists(local_file):
             # try fuzzy match
             base = filename.split(".")[0]
-            for f in os.listdir(local_folder):
-                if base in f:
-                    local_file = os.path.join(local_folder, f)
-                    print("⚠️ Matched similar file:", f)
-                    break
+            if os.path.exists(local_folder):
+                for f in os.listdir(local_folder):
+                    if base in f:
+                        local_file = os.path.join(local_folder, f)
+                        print("⚠️ Matched similar file:", f)
+                        break
 
         if not os.path.exists(local_file):
             print("❌ File not found:", local_file)
@@ -155,7 +172,7 @@ for _, row in df.iterrows():
         github_path = f"{kode_proyek}/{minggu}/{clean_filename}"
         output_path = os.path.join(OUTPUT_FOLDER, kode_proyek, minggu, clean_filename)
 
-        print(f"Processing: {github_path}")
+        print(f"🚀 Processing New Photo: {github_path}")
 
         ok, size_kb = compress_image(local_file, output_path)
         if not ok:
@@ -165,8 +182,8 @@ for _, row in df.iterrows():
         if not raw_url:
             continue
 
-        # Save metadata
-        records.append({
+        # Save to temporary list
+        new_records.append({
             "kode_proyek": kode_proyek,
             "minggu": minggu,
             "link_foto": raw_url,
@@ -175,7 +192,13 @@ for _, row in df.iterrows():
             "size_gambar_kb": size_kb
         })
 
-# Save Excel metadata for PowerBI
-meta_df = pd.DataFrame(records)
-meta_df.to_excel("foto_metadata.xlsx", index=False)
-print("✅ Metadata saved to foto_metadata.xlsx")
+# ================= SAVE & MERGE =================
+
+if new_records:
+    new_df = pd.DataFrame(new_records)
+    # Combine old data with new data
+    final_df = pd.concat([existing_meta_df, new_df], ignore_index=True)
+    final_df.to_excel(METADATA_FILE, index=False)
+    print(f"✅ Success! Added {len(new_records)} new photos to {METADATA_FILE}")
+else:
+    print("osh Check complete: No new photos to upload.")
