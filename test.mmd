@@ -1,0 +1,78 @@
+erDiagram
+    PROJECT {
+        bigint project_id PK "identity"
+        varchar project_code "UQ - kunci bisnis"
+        varchar project_name
+        varchar owner
+        varchar category
+        varchar status
+        date   start_planned
+        date   finish_planned
+        date   start_actual
+        date   finish_actual
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    PROJECT_STAGE {
+        bigint stage_id PK "identity"
+        bigint project_id FK
+        varchar stage_code "UQ (project_id, stage_code)"
+        varchar stage_name
+        decimal order_index "untuk sorting (mis. 1.000, 1.100, 2.000)"
+        date   start_planned
+        date   finish_planned
+        date   start_actual
+        date   finish_actual
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    PHASE_TYPE {
+        bigint phase_type_id PK "identity"
+        varchar phase_code "UQ - kamus: PENGADAAN, PERANCANGAN, ..."
+        varchar phase_name
+    }
+
+    PROJECT_STAGE_PHASE {
+        bigint stage_phase_id PK "identity"
+        bigint stage_id FK
+        bigint phase_type_id FK
+        date   start_planned
+        date   finish_planned
+        date   start_actual
+        date   finish_actual
+        varchar status
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    %% Opsional: dependensi antar tahap (precedence)
+    STAGE_DEPENDENCY {
+        bigint stage_dependency_id PK "identity"
+        bigint stage_id FK "child"
+        bigint depends_on_stage_id FK "parent"
+        varchar relation_type "FS/SS/FF/SF"
+        int    lag_days
+    }
+
+    %% Opsional: dokumen proyek
+    PROJECT_DOCUMENT {
+        bigint document_id PK "identity"
+        bigint project_id FK
+        varchar doc_type
+        varchar doc_number
+        text    file_url
+        date    issued_date
+    }
+
+    %% Relasi utama (1-N)
+    PROJECT ||--o{ PROJECT_STAGE : "has"
+    PROJECT_STAGE ||--o{ PROJECT_STAGE_PHASE : "has"
+    PHASE_TYPE ||--o{ PROJECT_STAGE_PHASE : "classifies"
+
+    %% Relasi opsional
+    PROJECT ||--o{ PROJECT_DOCUMENT : "has"
+    PROJECT_STAGE ||--o{ STAGE_DEPENDENCY : "as child"
+    PROJECT_STAGE ||--o{ STAGE_DEPENDENCY : "as parent (depends_on)"
